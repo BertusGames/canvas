@@ -1,0 +1,1130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#16171a">
+<title>Canvas Notes</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#16171a; --dot:#2c2e34; --panel:#202226; --panel2:#2a2c32; --line:#363940;
+  --text:#e9e7e3; --mute:#9799a1; --acc:#6aa5ff; --danger:#ff6b5e; --r:10px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);
+  font:13px/1.4 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  -webkit-user-select:none;user-select:none;overscroll-behavior:none}
+button,input{font:inherit;color:inherit}
+[hidden]{display:none!important}
+
+/* ---------- canvas ---------- */
+#stage{position:fixed;inset:0;overflow:hidden;touch-action:none;cursor:default;
+  background-image:radial-gradient(circle,var(--dot) 1px,transparent 1.4px)}
+#stage.grab{cursor:grab} #stage.grabbing{cursor:grabbing} #stage.draw{cursor:crosshair}
+#world{position:absolute;left:0;top:0;transform-origin:0 0;--iz:1}
+.item{position:absolute}
+.item.sel{outline:calc(2px*var(--iz)) solid var(--acc);outline-offset:calc(1px*var(--iz))}
+.item.flash{animation:flash 1s ease-out}
+@keyframes flash{0%,60%{box-shadow:0 0 0 calc(6px*var(--iz)) rgba(106,165,255,.55)}}
+.img{background:#23252b;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.07),0 8px 22px rgba(0,0,0,.35)}
+.img img{display:block;width:100%;height:100%;pointer-events:none;border-radius:2px}
+.img.missing::after{content:"image file missing";position:absolute;inset:0;display:grid;place-items:center;color:var(--mute);font-size:12px}
+.note{padding:12px 14px;border-radius:3px;font-size:15px;line-height:1.45;color:#1d1c1a;
+  box-shadow:0 1px 2px rgba(0,0,0,.4),0 8px 18px rgba(0,0,0,.28)}
+.note .txt{white-space:pre-wrap;overflow-wrap:anywhere;outline:none;min-height:1.45em}
+.note.editing{cursor:text}
+.note.editing .txt{-webkit-user-select:text;user-select:text}
+.note[data-c=yellow]{background:#f4d35e}
+.note[data-c=coral]{background:#f2a391}
+.note[data-c=green]{background:#a9d68e}
+.note[data-c=blue]{background:#9dc6f0}
+.note[data-c=slate]{background:#2f3239;color:#eceae6;box-shadow:inset 0 0 0 1px #474b55,0 8px 18px rgba(0,0,0,.28)}
+#ink{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#overlay{position:absolute;inset:0;pointer-events:none}
+#boxsel{position:absolute;display:none;border:1px solid var(--acc);background:rgba(106,165,255,.12)}
+#selbox{position:absolute;display:none}
+#selbox i{position:absolute;width:11px;height:11px;background:#fff;border:1.5px solid var(--acc);border-radius:2px;pointer-events:auto}
+#selbox i[data-h=nw]{left:-7px;top:-7px;cursor:nwse-resize}
+#selbox i[data-h=se]{right:-7px;bottom:-7px;cursor:nwse-resize}
+#selbox i[data-h=ne]{right:-7px;top:-7px;cursor:nesw-resize}
+#selbox i[data-h=sw]{left:-7px;bottom:-7px;cursor:nesw-resize}
+#empty{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;text-align:center;color:var(--mute)}
+#empty b{display:block;color:var(--text);font-size:17px;font-weight:600;margin-bottom:10px}
+#empty span{display:block;line-height:1.9}
+kbd{font:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+
+/* ---------- chrome ---------- */
+.bar{position:fixed;z-index:10;display:flex;align-items:center;gap:3px;padding:5px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.btn{height:30px;min-width:30px;padding:0 8px;border:0;border-radius:7px;background:transparent;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--panel2)} .btn.on{background:#2c4267;color:#d4e4ff}
+.btn:disabled{opacity:.32;cursor:default;background:transparent}
+.btn svg{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.sw{width:20px;height:20px;margin:0 3px;border-radius:50%;border:0;padding:0;cursor:pointer}
+.sw.on{box-shadow:0 0 0 2px var(--panel),0 0 0 3.5px var(--text)}
+.sz{width:28px;padding:0}.sz i{display:block;border-radius:50%;background:currentColor}
+#bar-board{top:12px;left:12px} #bname{max-width:200px;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+#bar-tools{top:12px;left:50%;transform:translateX(-50%)}
+#bar-search{top:12px;right:12px}
+#q{width:190px;height:30px;border:0;outline:0;background:transparent;padding:0 6px}
+#q::placeholder{color:var(--mute)} #qn{color:var(--mute);padding-right:8px;font-size:12px}
+#bar-zoom{bottom:12px;right:12px} #zpct{min-width:52px;font-variant-numeric:tabular-nums}
+#status{position:fixed;z-index:10;left:14px;bottom:14px;color:var(--mute);font-size:12px;cursor:default}
+#status.err{color:var(--danger);cursor:pointer}
+#notebar{display:none}
+.panel{position:fixed;z-index:20;display:none;flex-direction:column;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:0 12px 34px rgba(0,0,0,.5);overflow:auto;padding:6px}
+.panel.open{display:flex}
+#boards{top:58px;left:12px;width:300px;max-height:calc(100vh - 80px)}
+#results{top:58px;right:12px;width:320px;max-height:60vh}
+.row{display:flex;align-items:center;gap:2px;border-radius:7px}
+.row:hover{background:var(--panel2)} .row.cur .name{color:#cfe1ff;font-weight:600}
+.row .name{flex:1;justify-content:flex-start;overflow:hidden;text-overflow:ellipsis;background:transparent!important}
+.row .mini{opacity:0;width:28px;min-width:28px;padding:0} .row:hover .mini,.row .mini:focus{opacity:.8}
+.row input{flex:1;height:28px;margin:1px;background:var(--bg);border:1px solid var(--acc);border-radius:6px;padding:0 8px;outline:0;min-width:0}
+.row .ask{flex:1;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn.danger{color:var(--danger)}
+.hr{height:1px;background:var(--line);margin:6px 2px}
+.sub{color:var(--mute);font-size:12px;padding:4px 8px 6px;line-height:1.5}
+.panel .wide{justify-content:flex-start;width:100%}
+.res{display:block;width:100%;text-align:left;border:0;background:transparent;padding:7px 9px;border-radius:7px;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res:hover,.res.on{background:var(--panel2)} .res mark{background:#f4d35e;color:#1d1c1a;border-radius:2px}
+#toast{position:fixed;z-index:60;left:50%;bottom:58px;transform:translateX(-50%);background:#2f3239;border:1px solid var(--line);
+  padding:8px 14px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:80vw}
+#toast.show{opacity:1}
+.gate{position:fixed;inset:0;z-index:50;display:none;place-items:center;background:rgba(18,19,21,.93)}
+.gate.open{display:grid}
+.card{width:min(440px,90vw);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.card h2{margin:0 0 8px;font-size:18px} .card p{margin:0 0 16px;color:var(--mute);line-height:1.55;-webkit-user-select:text;user-select:text}
+.card .acts{display:flex;gap:8px;flex-wrap:wrap}
+.btn.solid{background:var(--acc);color:#0f1722;font-weight:600;padding:0 14px;height:34px}
+.btn.solid:hover{background:#86b7ff} .btn.line{border:1px solid var(--line);padding:0 14px;height:34px}
+#help table{border-collapse:collapse;width:100%} #help td{padding:4px 0;vertical-align:top} #help td:first-child{color:var(--mute);width:46%;padding-right:12px}
+@media (max-width:820px){ #bar-tools{top:auto;bottom:56px} #q{width:110px} #bname{max-width:110px} }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="world"></div>
+  <canvas id="ink"></canvas>
+  <div id="overlay">
+    <div id="boxsel"></div>
+    <div id="selbox"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></div>
+  </div>
+  <div id="empty" hidden><div>
+    <b>Empty board</b>
+    <span><kbd>Double-click</kbd> to write a note</span>
+    <span><kbd>Ctrl</kbd> + <kbd>V</kbd> to paste a screenshot</span>
+    <span>Pick up the pen to draw</span>
+  </div></div>
+</div>
+
+<div class="bar" id="bar-board">
+  <button class="btn" id="bbtn" title="Boards">
+    <svg viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg><span id="bname">…</span>
+  </button>
+</div>
+
+<div class="bar" id="bar-tools">
+  <button class="btn" id="tdraw" title="Draw with the mouse (D). The pen always draws.">
+    <svg viewBox="0 0 20 20"><path d="M3 17l1-4L14 3l3 3L7 16l-4 1zM12 5l3 3"/></svg>
+  </button>
+  <span id="pencolors" style="display:flex;align-items:center"></span>
+  <span class="sep"></span>
+  <span id="pensizes" style="display:flex"></span>
+  <span class="sep"></span>
+  <button class="btn" id="tundo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 20 20"><path d="M7 5L3 9l4 4M3 9h9a5 5 0 010 10H9"/></svg></button>
+  <button class="btn" id="tredo" title="Redo (Ctrl+Y)"><svg viewBox="0 0 20 20"><path d="M13 5l4 4-4 4M17 9H8a5 5 0 000 10h3"/></svg></button>
+</div>
+
+<div class="bar" id="bar-search">
+  <svg viewBox="0 0 20 20" style="width:16px;height:16px;margin-left:7px;fill:none;stroke:var(--mute);stroke-width:1.8;stroke-linecap:round"><circle cx="9" cy="9" r="5.5"/><path d="M13.5 13.5L17 17"/></svg>
+  <input id="q" placeholder="Search notes" autocomplete="off" spellcheck="false">
+  <span id="qn"></span>
+</div>
+
+<div class="bar" id="bar-zoom">
+  <button class="btn" id="zout" title="Zoom out">−</button>
+  <button class="btn" id="zpct" title="Back to 100% (0)">100%</button>
+  <button class="btn" id="zin" title="Zoom in">+</button>
+  <span class="sep"></span>
+  <button class="btn" id="zfit" title="Fit everything on screen (F)">
+    <svg viewBox="0 0 20 20"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg><span>Fit</span>
+  </button>
+</div>
+
+<div class="bar" id="notebar"></div>
+<div id="status"></div>
+
+<div class="panel" id="boards">
+  <div id="boardlist"></div>
+  <button class="btn wide" id="bnew"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>New board</button>
+  <div class="hr"></div>
+  <div class="sub" id="where"></div>
+  <button class="btn wide" id="bfolder"></button>
+  <button class="btn wide" id="bnofolder" hidden>Stop using the folder</button>
+  <div class="hr"></div>
+  <button class="btn wide" id="bexport">Export this board as one file</button>
+  <button class="btn wide" id="bimport">Import a board file</button>
+  <button class="btn wide" id="bhelp">Keys and shortcuts</button>
+</div>
+<div class="panel" id="results"></div>
+<div id="toast"></div>
+<input type="file" id="pickfile" accept=".json,application/json" hidden>
+
+<div class="gate" id="gate-folder"><div class="card">
+  <h2>Open your boards</h2>
+  <p>Your boards are saved in the folder <b id="gfname"></b>. The browser needs one click to open it again.</p>
+  <div class="acts"><button class="btn solid" id="gopen">Open my boards</button><button class="btn line" id="gbrowser">Use browser storage instead</button></div>
+</div></div>
+<div class="gate" id="gate-lock"><div class="card">
+  <h2>Already open</h2>
+  <p>Canvas Notes is open in another window. Use that one, or close it and try again here, so two windows can't overwrite each other's changes.</p>
+  <div class="acts"><button class="btn solid" onclick="location.reload()">Try again</button></div>
+</div></div>
+<div class="gate" id="help"><div class="card">
+  <h2>Keys and shortcuts</h2>
+  <table>
+    <tr><td>Double-click empty space</td><td>New note</td></tr>
+    <tr><td>Ctrl + V</td><td>Paste a screenshot (text becomes a note)</td></tr>
+    <tr><td>Drag empty space, or Space + drag</td><td>Move around</td></tr>
+    <tr><td>Scroll wheel</td><td>Zoom toward the cursor</td></tr>
+    <tr><td>Shift + drag</td><td>Select several things</td></tr>
+    <tr><td>Pen</td><td>Draw. Eraser end or side button erases</td></tr>
+    <tr><td>D</td><td>Draw with the mouse (right-drag erases)</td></tr>
+    <tr><td>F &nbsp;/&nbsp; 0</td><td>Fit everything &nbsp;/&nbsp; 100%</td></tr>
+    <tr><td>Ctrl + Z &nbsp;/&nbsp; Ctrl + Y</td><td>Undo &nbsp;/&nbsp; redo</td></tr>
+    <tr><td>Delete</td><td>Delete the selection</td></tr>
+    <tr><td>Ctrl + D</td><td>Duplicate</td></tr>
+    <tr><td>Ctrl + F</td><td>Search notes</td></tr>
+    <tr><td>[ &nbsp;/&nbsp; ]</td><td>Send to back &nbsp;/&nbsp; bring to front</td></tr>
+    <tr><td>Arrow keys</td><td>Nudge (Shift for bigger steps)</td></tr>
+  </table>
+  <div class="acts" style="margin-top:16px"><button class="btn solid" id="helpclose">Close</button></div>
+</div></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Canvas Notes: personal infinite canvas. Static files, no dependencies.
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const stage = $('#stage'), world = $('#world'), ink = $('#ink'), ctx = ink.getContext('2d');
+const APP = 'canvas-notes', ZMIN = 0.05, ZMAX = 8, TW = 640;
+const PEN_COLORS = ['#ff5a4f', '#ffc247', '#5fd08a', '#5aa9ff', '#f2f0ea'];
+const PEN_SIZES = [2, 4, 9];
+const NOTE_COLORS = { yellow: '#f4d35e', coral: '#f2a391', green: '#a9d68e', blue: '#9dc6f0', slate: '#4a4e59' };
+const hasFS = 'showDirectoryPicker' in window;
+
+const uid = (n = 8) => { const a = crypto.getRandomValues(new Uint8Array(n)); let s = ''; for (const b of a) s += 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]; return s; };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const r2 = v => Math.round(v * 100) / 100;
+const safeName = s => (String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80)) || 'Untitled';
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const S = {
+  store: null, boards: [], doc: null,
+  items: [], strokes: [], byId: new Map(),
+  view: { x: 0, y: 0, z: 1 }, sel: new Set(),
+  pen: { color: PEN_COLORS[0], size: PEN_SIZES[1] }, noteColor: 'yellow',
+  drawMode: false, space: false, editing: null, editTx: null,
+  undo: [], redo: [], mouse: { x: innerWidth / 2, y: innerHeight / 2 },
+  cur: null, eraser: null, drag: null, lastType: 'mouse',
+};
+const els = new Map();            // item id -> element
+const der = new WeakMap();        // stroke -> {path, bb}
+const imgs = new Map();           // image name -> record
+const pendingImg = new Set();     // image writes in flight
+
+/* ---------- IndexedDB ---------- */
+const idb = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open(APP, 1);
+    r.onupgradeneeded = () => { for (const n of ['meta', 'boards', 'index', 'images']) r.result.createObjectStore(n); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const run = async (store, mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const t = db.transaction(store, mode); const rq = fn(t.objectStore(store));
+      t.oncomplete = () => res(rq && rq.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('aborted'));
+    });
+  };
+  return {
+    get: (s, k) => run(s, 'readonly', o => o.get(k)),
+    put: (s, k, v) => run(s, 'readwrite', o => o.put(v, k)),
+    del: (s, k) => run(s, 'readwrite', o => o.delete(k)),
+    all: s => run(s, 'readonly', o => o.getAll()),
+    keys: (s, range) => run(s, 'readonly', o => o.getAllKeys(range)),
+  };
+})();
+const meta = { get: k => idb.get('meta', k).catch(() => undefined), set: (k, v) => idb.put('meta', k, v).catch(() => { }) };
+
+/* ---------- storage: browser ---------- */
+const imgRange = bid => IDBKeyRange.bound(bid + '/', bid + '/￿');
+const browserStore = {
+  kind: 'browser',
+  async list() { return (await idb.all('index')).map(b => ({ id: b.id, name: b.name, updated: b.updated })); },
+  load: id => idb.get('boards', id),
+  async save(doc) { await idb.put('boards', doc.id, doc); await idb.put('index', doc.id, { id: doc.id, name: doc.name, updated: doc.updated }); },
+  async remove(id) { await idb.del('boards', id); await idb.del('index', id); await idb.del('images', imgRange(id)); },
+  putImage: (bid, name, blob) => idb.put('images', bid + '/' + name, blob),
+  getImage: (bid, name) => idb.get('images', bid + '/' + name),
+  async listImages(bid) { return (await idb.keys('images', imgRange(bid))).map(k => ({ name: k.slice(bid.length + 1), modified: 0 })); },
+  delImage: (bid, name) => idb.del('images', bid + '/' + name),
+};
+
+/* ---------- storage: a real folder (File System Access API) ----------
+   <folder>/<Board name>.<id>.board.json      one file per board
+   <folder>/images/<id>/<image file>          that board's screenshots      */
+function folderStore(dir) {
+  const files = new Map();
+  const imgDir = async (bid, create) => (await dir.getDirectoryHandle('images', { create })).getDirectoryHandle(bid, { create });
+  return {
+    kind: 'folder', dir,
+    async list() {
+      files.clear(); const out = new Map();
+      for await (const [name, h] of dir.entries()) {
+        if (h.kind !== 'file') continue;
+        const m = /^(.*)\.([a-z0-9]{8})\.board\.json$/.exec(name); if (!m) continue;
+        const f = await h.getFile(); const prev = out.get(m[2]);
+        if (prev && prev.updated >= f.lastModified) continue;
+        files.set(m[2], name); out.set(m[2], { id: m[2], name: m[1], updated: f.lastModified });
+      }
+      return [...out.values()];
+    },
+    async load(id) { const h = await dir.getFileHandle(files.get(id)); return JSON.parse(await (await h.getFile()).text()); },
+    async save(doc) {
+      const fn = `${safeName(doc.name)}.${doc.id}.board.json`;
+      const h = await dir.getFileHandle(fn, { create: true }); const w = await h.createWritable();
+      await w.write(JSON.stringify(doc)); await w.close();
+      const old = files.get(doc.id); files.set(doc.id, fn);
+      if (old && old !== fn) await dir.removeEntry(old).catch(() => { });
+    },
+    async remove(id) {
+      const fn = files.get(id); if (fn) await dir.removeEntry(fn).catch(() => { }); files.delete(id);
+      try { const a = await dir.getDirectoryHandle('images'); await a.removeEntry(id, { recursive: true }); } catch { }
+    },
+    async putImage(bid, name, blob) { const d = await imgDir(bid, true); const h = await d.getFileHandle(name, { create: true }); const w = await h.createWritable(); await w.write(blob); await w.close(); },
+    async getImage(bid, name) { try { const d = await imgDir(bid, false); return await (await d.getFileHandle(name)).getFile(); } catch { return null; } },
+    async listImages(bid) {
+      const out = []; let d; try { d = await imgDir(bid, false); } catch { return out; }
+      for await (const [name, h] of d.entries()) if (h.kind === 'file') out.push({ name, modified: (await h.getFile()).lastModified });
+      return out;
+    },
+    async delImage(bid, name) { try { const d = await imgDir(bid, false); await d.removeEntry(name); } catch { } },
+  };
+}
+
+/* ---------- view ---------- */
+const toWorld = (sx, sy) => ({ x: (sx - S.view.x) / S.view.z, y: (sy - S.view.y) / S.view.z });
+let frameReq = 0, viewT = 0, anim = 0;
+function needFrame() { if (!frameReq) frameReq = requestAnimationFrame(frame); }
+function setView(x, y, z) {
+  S.view.x = x; S.view.y = y; S.view.z = z; needFrame(); lodSoon();
+  clearTimeout(viewT); viewT = setTimeout(() => S.doc && meta.set('view:' + S.doc.id, { ...S.view }), 500);
+}
+function zoomAt(sx, sy, nz) { nz = clamp(nz, ZMIN, ZMAX); const w = toWorld(sx, sy); setView(sx - w.x * nz, sy - w.y * nz, nz); }
+function cancelAnim() { cancelAnimationFrame(anim); anim = 0; }
+function animateView(x, y, z, ms = 240) {
+  cancelAnim(); const a = { ...S.view }, t0 = performance.now(), la = Math.log(a.z), lz = Math.log(z);
+  const cx = innerWidth / 2, cy = innerHeight / 2;
+  const wa = { x: (cx - a.x) / a.z, y: (cy - a.y) / a.z }, wb = { x: (cx - x) / z, y: (cy - y) / z };
+  const step = now => {
+    let t = clamp((now - t0) / ms, 0, 1); t = 1 - Math.pow(1 - t, 3);
+    const zz = Math.exp(la + (lz - la) * t), wx = wa.x + (wb.x - wa.x) * t, wy = wa.y + (wb.y - wa.y) * t;
+    setView(cx - wx * zz, cy - wy * zz, zz);
+    anim = t < 1 ? requestAnimationFrame(step) : 0;
+  };
+  anim = requestAnimationFrame(step);
+}
+function geom(s) {
+  let g = der.get(s);
+  if (!g) {
+    const p = s.pts; let x0 = 1e30, y0 = 1e30, x1 = -1e30, y1 = -1e30;
+    for (let i = 0; i < p.length; i += 3) { if (p[i] < x0) x0 = p[i]; if (p[i] > x1) x1 = p[i]; if (p[i + 1] < y0) y0 = p[i + 1]; if (p[i + 1] > y1) y1 = p[i + 1]; }
+    g = { path: buildPath(p, s.w), bb: [x0 - s.w, y0 - s.w, x1 + s.w, y1 + s.w] }; der.set(s, g);
+  }
+  return g;
+}
+function boundsOf(objs) {
+  let x0 = 1e30, y0 = 1e30, x1 = -1e30, y1 = -1e30, n = 0;
+  for (const o of objs) {
+    let b; if (o.t === 'ink') b = geom(o).bb; else b = [o.x, o.y, o.x + o.w, o.y + o.h];
+    x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]); x1 = Math.max(x1, b[2]); y1 = Math.max(y1, b[3]); n++;
+  }
+  return n ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+}
+function fitView(animate = true) {
+  const b = boundsOf([...S.items, ...S.strokes]); const W = innerWidth, H = innerHeight;
+  let x = W / 2, y = H / 2, z = 1;
+  if (b) { const padX = 60, padT = 76, padB = 64; z = clamp(Math.min((W - padX * 2) / Math.max(b.w, 1), (H - padT - padB) / Math.max(b.h, 1)), ZMIN, 1); x = W / 2 - (b.x + b.w / 2) * z; y = (padT + (H - padT - padB) / 2) - (b.y + b.h / 2) * z; }
+  animate ? animateView(x, y, z) : setView(x, y, z);
+}
+
+/* ---------- frame: transform, culling, ink, overlay ---------- */
+function frame() {
+  frameReq = 0; const { x, y, z } = S.view, W = innerWidth, H = innerHeight;
+  world.style.transform = `translate(${x}px,${y}px) scale(${z})`;
+  world.style.setProperty('--iz', 1 / z);
+  let g = 24; while (g * z < 14) g *= 2; while (g * z > 56) g /= 2;
+  stage.style.backgroundSize = `${g * z}px ${g * z}px`; stage.style.backgroundPosition = `${x}px ${y}px`;
+  $('#zpct').textContent = Math.round(z * 100) + '%';
+  const m = 300;
+  for (const o of S.items) {
+    const el = els.get(o.id); if (!el) continue;
+    const sx = o.x * z + x, sy = o.y * z + y;
+    const vis = sx < W + m && sy < H + m && sx + o.w * z > -m && sy + o.h * z > -m;
+    if (el._vis !== vis) { el._vis = vis; el.style.display = vis ? '' : 'none'; if (vis) lodSoon(); }
+    if (vis && o.t === 'img' && !el._src) loadImg(o.img);
+  }
+  drawInk(); placeOverlay();
+  $('#empty').hidden = !!(S.items.length || S.strokes.length || S.cur) || !S.doc;
+}
+function drawInk() {
+  const dpr = devicePixelRatio || 1, W = innerWidth, H = innerHeight, { x, y, z } = S.view;
+  const cw = Math.round(W * dpr), ch = Math.round(H * dpr);
+  if (ink.width !== cw || ink.height !== ch) { ink.width = cw; ink.height = ch; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cw, ch);
+  ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * x, dpr * y);
+  const vx0 = -x / z, vy0 = -y / z, vx1 = (W - x) / z, vy1 = (H - y) / z, d = S.drag;
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  for (const s of S.strokes) {
+    const g = geom(s), b = g.bb; let ox = 0, oy = 0;
+    if (d && d.set.has(s.id)) { ox = d.dx; oy = d.dy; }
+    if (b[2] + ox < vx0 || b[0] + ox > vx1 || b[3] + oy < vy0 || b[1] + oy > vy1) continue;
+    if (ox || oy) { ctx.save(); ctx.translate(ox, oy); }
+    if (s.w * z < 1.3) {                    // thinner than a pixel or so on screen: a plain line is cheaper and stays visible
+      const lite = g.lite || (g.lite = litePath(s.pts)), lw = Math.max(s.w * 1.1, 1 / z);
+      if (S.sel.has(s.id)) { ctx.strokeStyle = '#6aa5ff'; ctx.lineWidth = lw + 4 / z; ctx.stroke(lite); }
+      ctx.strokeStyle = s.c; ctx.lineWidth = lw; ctx.stroke(lite);
+    } else {
+      if (S.sel.has(s.id)) { ctx.strokeStyle = '#6aa5ff'; ctx.lineWidth = 4 / z; ctx.stroke(g.path); }
+      ctx.fillStyle = s.c; ctx.fill(g.path);
+    }
+    if (ox || oy) ctx.restore();
+  }
+  if (S.cur && S.cur.pts.length) { ctx.fillStyle = S.cur.c; ctx.fill(buildPath(S.cur.pts, S.cur.w)); }
+  if (S.eraser) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.beginPath(); ctx.arc(S.eraser.x, S.eraser.y, 9, 0, 6.2832);
+    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.2; ctx.stroke();
+  }
+}
+function placeOverlay() {
+  const sb = $('#selbox'), nb = $('#notebar'), { x, y, z } = S.view; let one = null; const notes = [];
+  for (const id of S.sel) { const o = S.byId.get(id); if (o && o.t === 'note') notes.push(o); }
+  if (S.sel.size === 1 && !S.editing) { const o = S.byId.get([...S.sel][0]); if (o && o.t !== 'ink') one = o; }
+  if (one) { sb.style.display = 'block'; sb.style.left = (one.x * z + x) + 'px'; sb.style.top = (one.y * z + y) + 'px'; sb.style.width = (one.w * z) + 'px'; sb.style.height = (one.h * z) + 'px'; }
+  else sb.style.display = 'none';
+  if (notes.length && !(G && G.busy)) {
+    const b = boundsOf(notes); nb.style.display = 'flex'; const w = nb.offsetWidth || 170;
+    const top = b.y * z + y - 50; nb.style.left = clamp((b.x + b.w / 2) * z + x - w / 2, 8, innerWidth - w - 8) + 'px';
+    nb.style.top = (top < 58 ? Math.min((b.y + b.h) * z + y + 12, innerHeight - 100) : top) + 'px';
+    const c = notes.every(n => n.color === notes[0].color) ? notes[0].color : '';
+    for (const k of nb.children) k.classList.toggle('on', k.dataset.c === c);
+  } else nb.style.display = 'none';
+}
+
+/* ---------- ink geometry ---------- */
+function buildPath(pts, w) {
+  const n = pts.length / 3, path = new Path2D();
+  const rad = p => Math.max(w * 0.5 * (0.3 + 1.4 * Math.pow(p, 0.8)), w * 0.14);
+  if (n === 1) { path.arc(pts[0], pts[1], rad(pts[2]), 0, 6.2832); return path; }
+  const step = Math.max(w * 0.6, 1e-4), D = [];
+  for (let i = 0; i < n - 1; i++) {
+    const a = Math.max(i - 1, 0) * 3, b = i * 3, c = (i + 1) * 3, d = Math.min(i + 2, n - 1) * 3;
+    const x1 = pts[b], y1 = pts[b + 1], x2 = pts[c], y2 = pts[c + 1], len = Math.hypot(x2 - x1, y2 - y1);
+    let t1x = x2 - pts[a], t1y = y2 - pts[a + 1], t2x = pts[d] - x1, t2y = pts[d + 1] - y1;
+    let l = Math.hypot(t1x, t1y) || 1; t1x = t1x / l * len; t1y = t1y / l * len;
+    l = Math.hypot(t2x, t2y) || 1; t2x = t2x / l * len; t2y = t2y / l * len;
+    const k = clamp(Math.ceil(len / step), 1, 14);
+    for (let j = 0; j < k; j++) {
+      const t = j / k, tt = t * t, ttt = tt * t, h00 = 2 * ttt - 3 * tt + 1, h10 = ttt - 2 * tt + t, h01 = -2 * ttt + 3 * tt, h11 = ttt - tt;
+      D.push(h00 * x1 + h10 * t1x + h01 * x2 + h11 * t2x, h00 * y1 + h10 * t1y + h01 * y2 + h11 * t2y, pts[b + 2] + (pts[c + 2] - pts[b + 2]) * t);
+    }
+  }
+  D.push(pts[(n - 1) * 3], pts[(n - 1) * 3 + 1], pts[(n - 1) * 3 + 2]);
+  const m = D.length / 3, L = new Float64Array(m * 2), R = new Float64Array(m * 2), dots = [0, m - 1];
+  let pdx = 0, pdy = 0;
+  for (let i = 0; i < m; i++) {
+    const a = Math.max(i - 1, 0) * 3, b = Math.min(i + 1, m - 1) * 3; let dx = D[b] - D[a], dy = D[b + 1] - D[a + 1];
+    const l = Math.hypot(dx, dy); if (l < 1e-9) { dx = pdx || 1; dy = pdy; } else { dx /= l; dy /= l; }
+    if (i > 0 && dx * pdx + dy * pdy < 0.5) dots.push(i);
+    pdx = dx; pdy = dy; const r = rad(D[i * 3 + 2]), x = D[i * 3], y = D[i * 3 + 1];
+    L[i * 2] = x + dy * r; L[i * 2 + 1] = y - dx * r; R[i * 2] = x - dy * r; R[i * 2 + 1] = y + dx * r;
+  }
+  path.moveTo(L[0], L[1]);
+  for (let i = 1; i < m; i++) path.lineTo(L[i * 2], L[i * 2 + 1]);
+  for (let i = m - 1; i >= 0; i--) path.lineTo(R[i * 2], R[i * 2 + 1]);
+  path.closePath();
+  for (const i of dots) { const r = rad(D[i * 3 + 2]); path.moveTo(D[i * 3] + r, D[i * 3 + 1]); path.arc(D[i * 3], D[i * 3 + 1], r, 0, 6.2832); }
+  return path;
+}
+function litePath(pts) { const p = new Path2D(); p.moveTo(pts[0], pts[1]); if (pts.length === 3) p.lineTo(pts[0], pts[1]); for (let i = 3; i < pts.length; i += 3) p.lineTo(pts[i], pts[i + 1]); return p; }
+function simplify(pts, eps, w) {            // Ramer-Douglas-Peucker; pressure counts as a third axis
+  const n = pts.length / 3; if (n < 3) return pts.slice();
+  const keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1; const st = [[0, n - 1]], pz = w * 0.7;
+  while (st.length) {
+    const [a, b] = st.pop(); const ax = pts[a * 3], ay = pts[a * 3 + 1], az = pts[a * 3 + 2] * pz;
+    const dx = pts[b * 3] - ax, dy = pts[b * 3 + 1] - ay, dz = pts[b * 3 + 2] * pz - az, dd = dx * dx + dy * dy + dz * dz;
+    let best = -1, bd = eps * eps;
+    for (let i = a + 1; i < b; i++) {
+      const px = pts[i * 3] - ax, py = pts[i * 3 + 1] - ay, pzz = pts[i * 3 + 2] * pz - az;
+      const t = dd ? clamp((px * dx + py * dy + pzz * dz) / dd, 0, 1) : 0;
+      const ex = px - dx * t, ey = py - dy * t, ez = pzz - dz * t, d = ex * ex + ey * ey + ez * ez;
+      if (d > bd) { bd = d; best = i; }
+    }
+    if (best > 0) { keep[best] = 1; st.push([a, best], [best, b]); }
+  }
+  const out = []; for (let i = 0; i < n; i++) if (keep[i]) out.push(pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2]);
+  return out;
+}
+function hitStroke(s, x, y, tol) {
+  const b = geom(s).bb; if (x < b[0] - tol || x > b[2] + tol || y < b[1] - tol || y > b[3] + tol) return false;
+  const p = s.pts, R = s.w * 0.85 + tol, RR = R * R;
+  if (p.length === 3) return (x - p[0]) ** 2 + (y - p[1]) ** 2 <= RR;
+  for (let i = 0; i + 5 < p.length; i += 3) {
+    const ax = p[i], ay = p[i + 1], dx = p[i + 3] - ax, dy = p[i + 4] - ay, dd = dx * dx + dy * dy;
+    const t = dd ? clamp(((x - ax) * dx + (y - ay) * dy) / dd, 0, 1) : 0, ex = x - ax - dx * t, ey = y - ay - dy * t;
+    if (ex * ex + ey * ey <= RR) return true;
+  }
+  return false;
+}
+function itemAtPoint(x, y) { for (let i = S.items.length - 1; i >= 0; i--) { const o = S.items[i]; if (x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h) return o; } return null; }
+function attach(s) { const b = geom(s).bb, o = itemAtPoint((b[0] + b[2]) / 2, (b[1] + b[3]) / 2); if (o) s.parent = o.id; else delete s.parent; }
+
+/* ---------- DOM items ---------- */
+function renderItem(o) {
+  let el = els.get(o.id);
+  if (!el) {
+    el = document.createElement('div'); el.className = 'item ' + o.t; el.dataset.id = o.id; el._vis = true;
+    if (o.t === 'img') { const im = document.createElement('img'); im.draggable = false; im.alt = ''; im.decoding = 'async'; el.appendChild(im); }
+    else { const t = document.createElement('div'); t.className = 'txt'; t.spellcheck = true; el.appendChild(t); }
+    world.appendChild(el); els.set(o.id, el);
+  }
+  const st = el.style; st.left = o.x + 'px'; st.top = o.y + 'px'; st.width = o.w + 'px';
+  if (o.t === 'note') { st.minHeight = o.h + 'px'; el.dataset.c = o.color; const t = el.firstChild; if (S.editing !== o.id && t.textContent !== o.text) t.textContent = o.text; }
+  else st.height = o.h + 'px';
+  el.classList.toggle('sel', S.sel.has(o.id));
+  return el;
+}
+function syncDOM() {
+  const live = new Set(); S.items.forEach((o, i) => { live.add(o.id); renderItem(o).style.zIndex = i; });
+  for (const [id, el] of els) if (!live.has(id)) { el.remove(); els.delete(id); }
+  needFrame(); lodSoon();
+}
+function setSel(ids) { S.sel = new Set(ids); for (const [id, el] of els) el.classList.toggle('sel', S.sel.has(id)); needFrame(); }
+
+/* ---------- images: lazy load + small previews when zoomed out ---------- */
+function imgRec(name) { let r = imgs.get(name); if (!r) { r = { blob: null, url: '', thumb: '', tstate: '', loading: false, missing: false }; imgs.set(name, r); } return r; }
+async function loadImg(name) {
+  const r = imgRec(name); if (r.url || r.loading || r.missing) return; r.loading = true; const bid = S.doc.id;
+  try { const blob = await S.store.getImage(bid, name); if (!S.doc || S.doc.id !== bid) return; if (blob) { r.blob = blob; r.url = URL.createObjectURL(blob); } else r.missing = true; }
+  catch { r.missing = true; }
+  r.loading = false; lodSoon();
+}
+let lodT = 0; function lodSoon() { if (!lodT) lodT = setTimeout(() => { lodT = 0; applyLod(); }, 110); }
+function applyLod() {
+  const dpr = devicePixelRatio || 1, z = S.view.z;
+  for (const o of S.items) {
+    if (o.t !== 'img') continue; const el = els.get(o.id); if (!el || !el._vis) continue; const r = imgRec(o.img);
+    el.classList.toggle('missing', r.missing); if (!r.url) continue;
+    let url = r.url;
+    if ((o.nw || 0) > TW * 1.6 && o.w * z * dpr < TW * 1.15) { if (r.thumb) url = r.thumb; else if (!r.tstate) { r.tstate = 'q'; tq.push(r); pumpThumbs(); } }
+    if (el._src === url) continue; const im = el.firstChild;
+    if (!el._src) { el._src = url; im.src = url; continue; }
+    el._src = url; const pre = new Image(); pre.src = url; pre.decode().catch(() => { }).then(() => { if (el._src === url) im.src = url; });
+  }
+}
+const tq = []; let tbusy = false;
+async function pumpThumbs() {
+  if (tbusy) return; tbusy = true;
+  while (tq.length) {
+    const r = tq.shift();
+    try {
+      const bmp = await createImageBitmap(r.blob, { resizeWidth: TW, resizeQuality: 'medium' });
+      const c = new OffscreenCanvas(bmp.width, bmp.height); c.getContext('2d').drawImage(bmp, 0, 0); bmp.close();
+      r.thumb = URL.createObjectURL(await c.convertToBlob({ type: 'image/webp', quality: 0.82 })); r.tstate = 'ok';
+    } catch { r.tstate = 'fail'; }
+    lodSoon();
+  }
+  tbusy = false;
+}
+
+/* ---------- undo / redo ---------- */
+const clone = o => o ? (o.t === 'ink' ? { ...o, pts: o.pts.slice() } : { ...o }) : null;
+const eqArr = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+function beginTx(ids = []) {
+  const before = new Map(), ord = [S.items.map(o => o.id), S.strokes.map(o => o.id)];
+  const t = {
+    touch(...list) { for (const id of list) if (!before.has(id)) before.set(id, clone(S.byId.get(id))); return t; },
+    commit() {
+      const ch = [];
+      for (const [id, b] of before) { const a = clone(S.byId.get(id)); if (!a && !b) continue; if (a && b && JSON.stringify(a) === JSON.stringify(b)) continue; ch.push({ id, b, a }); }
+      const now = [S.items.map(o => o.id), S.strokes.map(o => o.id)], oc = !eqArr(ord[0], now[0]) || !eqArr(ord[1], now[1]);
+      if (!ch.length && !oc) return false;
+      S.undo.push({ ch, ord: oc ? [ord, now] : null }); if (S.undo.length > 300) S.undo.shift();
+      S.redo.length = 0; markDirty(); undoUI(); return true;
+    },
+  };
+  return t.touch(...ids);
+}
+function applyEntry(e, back) {
+  for (const c of e.ch) { const st = back ? c.b : c.a; if (st) S.byId.set(c.id, clone(st)); else S.byId.delete(c.id); }
+  if (e.ord) { const [io, so] = back ? e.ord[0] : e.ord[1]; S.items = io.map(id => S.byId.get(id)).filter(Boolean); S.strokes = so.map(id => S.byId.get(id)).filter(Boolean); }
+  else { S.items = S.items.map(o => S.byId.get(o.id)).filter(Boolean); S.strokes = S.strokes.map(o => S.byId.get(o.id)).filter(Boolean); }
+  const keep = e.ch.map(c => c.id).filter(id => S.byId.has(id));
+  S.sel = new Set(keep.length <= 40 ? keep : []); syncDOM(); markDirty(); undoUI();
+}
+function undo() { if (S.editing) endEdit(); const e = S.undo.pop(); if (e) { S.redo.push(e); applyEntry(e, true); } }
+function redo() { if (S.editing) endEdit(); const e = S.redo.pop(); if (e) { S.undo.push(e); applyEntry(e, false); } }
+function undoUI() { $('#tundo').disabled = !S.undo.length; $('#tredo').disabled = !S.redo.length; }
+
+/* ---------- editing actions ---------- */
+function addObj(o) { S.byId.set(o.id, o); (o.t === 'ink' ? S.strokes : S.items).push(o); }
+function withAttached(ids) { const items = new Set(); for (const id of ids) { const o = S.byId.get(id); if (o && o.t !== 'ink') items.add(id); } const out = new Set(ids); for (const s of S.strokes) if (s.parent && items.has(s.parent)) out.add(s.id); return out; }
+function deleteSel() {
+  if (!S.sel.size) return; const ids = withAttached(S.sel), tx = beginTx([...ids]);
+  S.items = S.items.filter(o => !ids.has(o.id)); S.strokes = S.strokes.filter(o => !ids.has(o.id));
+  for (const id of ids) S.byId.delete(id); setSel([]); syncDOM(); tx.commit();
+}
+function duplicateSel() {
+  if (!S.sel.size) return; const ids = withAttached(S.sel), map = new Map(), tx = beginTx(), made = [];
+  const src = [...S.items, ...S.strokes].filter(o => ids.has(o.id)); for (const o of src) map.set(o.id, uid());
+  for (const o of src) {
+    const c = clone(o); c.id = map.get(o.id); tx.touch(c.id);
+    if (c.t === 'ink') { for (let i = 0; i < c.pts.length; i += 3) { c.pts[i] += 24; c.pts[i + 1] += 24; } if (c.parent) { if (map.has(c.parent)) c.parent = map.get(c.parent); else delete c.parent; } }
+    else { c.x += 24; c.y += 24; }
+    addObj(c); if (S.sel.has(o.id)) made.push(c.id);
+  }
+  syncDOM(); setSel(made); tx.commit();
+}
+function reorder(front) {
+  const picked = S.items.filter(o => S.sel.has(o.id)); if (!picked.length) return; const tx = beginTx(), rest = S.items.filter(o => !S.sel.has(o.id));
+  S.items = front ? [...rest, ...picked] : [...picked, ...rest]; syncDOM(); tx.commit();
+}
+function nudge(dx, dy) {
+  if (!S.sel.size) return; const ids = withAttached(S.sel), tx = beginTx([...ids]);
+  for (const id of ids) { const o = S.byId.get(id); if (o.t === 'ink') { for (let i = 0; i < o.pts.length; i += 3) { o.pts[i] = r2(o.pts[i] + dx); o.pts[i + 1] = r2(o.pts[i + 1] + dy); } der.delete(o); } else { o.x = r2(o.x + dx); o.y = r2(o.y + dy); renderItem(o); } }
+  needFrame(); tx.commit();
+}
+function recolorNotes(c) {
+  S.noteColor = c; meta.set('noteColor', c); const notes = [...S.sel].map(id => S.byId.get(id)).filter(o => o && o.t === 'note'); if (!notes.length) return;
+  const tx = beginTx(notes.map(o => o.id)); for (const o of notes) { o.color = c; renderItem(o); } needFrame(); tx.commit();
+}
+function setPen(color, size) {
+  if (color) S.pen.color = color; if (size) S.pen.size = size; meta.set('pen', { ...S.pen });
+  for (const b of $('#pencolors').children) b.classList.toggle('on', b.dataset.c === S.pen.color);
+  for (const b of $('#pensizes').children) b.classList.toggle('on', +b.dataset.s === S.pen.size);
+  if (color) { const inks = [...S.sel].map(id => S.byId.get(id)).filter(o => o && o.t === 'ink'); if (inks.length) { const tx = beginTx(inks.map(o => o.id)); for (const s of inks) s.c = color; needFrame(); tx.commit(); } }
+}
+function setDraw(on) { S.drawMode = on; $('#tdraw').classList.toggle('on', on); stage.classList.toggle('draw', on); }
+
+/* ---------- notes ---------- */
+function newNote(wx, wy, text) {
+  const o = { id: uid(), t: 'note', x: r2(wx - 110), y: r2(wy - 30), w: 220, h: 60, text: text || '', color: S.noteColor };
+  const tx = beginTx().touch(o.id); addObj(o); syncDOM();
+  if (text) { o.h = els.get(o.id).offsetHeight; setSel([o.id]); tx.commit(); } else startEdit(o.id, tx);
+}
+function startEdit(id, tx) {
+  const o = S.byId.get(id), el = els.get(id); if (!o || !el) return;
+  S.editing = id; S.editTx = tx || beginTx([id]); setSel([id]); el.classList.add('editing');
+  const t = el.firstChild; t.contentEditable = 'plaintext-only'; if (t.contentEditable !== 'plaintext-only') t.contentEditable = 'true';
+  t.focus(); const r = document.createRange(); r.selectNodeContents(t); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  needFrame();
+}
+function endEdit() {
+  const id = S.editing; if (!id) return; S.editing = null; const o = S.byId.get(id), el = els.get(id), tx = S.editTx; S.editTx = null;
+  if (!o || !el) return; const t = el.firstChild, text = t.innerText.replace(/\r/g, '').replace(/\n+$/, '');
+  t.contentEditable = 'false'; el.classList.remove('editing'); getSelection().removeAllRanges(); t.blur();
+  if (!text.trim()) { S.items = S.items.filter(i => i.id !== id); S.byId.delete(id); S.sel.delete(id); syncDOM(); }
+  else { o.text = text; t.textContent = text; o.h = el.offsetHeight || o.h; renderItem(o); }
+  tx.commit(); needFrame();
+}
+
+/* ---------- images in ---------- */
+async function addImages(files, at) {
+  const dpr = devicePixelRatio || 1, tx = beginTx(), made = []; let i = 0;
+  for (const f of files) {
+    let bmp; try { bmp = await createImageBitmap(f); } catch { continue; }
+    const nw = bmp.width, nh = bmp.height; bmp.close();
+    const ext = ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/bmp': 'bmp' })[f.type] || 'png';
+    const name = uid(10) + '.' + ext, blob = f.slice(0, f.size, f.type || 'image/png'), w = nw / dpr, h = nh / dpr;
+    const r = imgRec(name); r.blob = blob; r.url = URL.createObjectURL(blob);
+    const o = { id: uid(), t: 'img', x: r2(at.x - w / 2 + i * 24), y: r2(at.y - h / 2 + i * 24), w: r2(w), h: r2(h), img: name, nw, nh };
+    tx.touch(o.id); addObj(o); made.push(o.id); i++;
+    const bid = S.doc.id, p = S.store.putImage(bid, name, blob).catch(() => saveFailed()).finally(() => pendingImg.delete(p)); pendingImg.add(p);
+  }
+  if (!made.length) return; syncDOM(); setSel(made); tx.commit();
+}
+const cursorWorld = () => toWorld(clamp(S.mouse.x, 0, innerWidth), clamp(S.mouse.y, 0, innerHeight));
+
+/* ---------- pointer input ---------- */
+let G = null; const touches = new Map(); let pinch = null;
+function pick(sx, sy) {
+  const w = toWorld(sx, sy), tol = 4 / S.view.z;
+  for (let i = S.strokes.length - 1; i >= 0; i--) if (hitStroke(S.strokes[i], w.x, w.y, tol)) return S.strokes[i].id;
+  const el = document.elementFromPoint(sx, sy), it = el && el.closest && el.closest('.item'); return it ? it.dataset.id : null;
+}
+stage.addEventListener('pointerdown', e => {
+  S.lastType = e.pointerType;
+  if (e.target.closest && e.target.closest('.editing')) return;
+  if (S.editing) endEdit();
+  closePanels(); cancelAnim();
+  const ae = document.activeElement; if (ae && ae !== document.body && ae.blur) ae.blur();
+  e.preventDefault();
+  if (e.pointerType === 'touch') {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 1 && !G) { G = gPan(e, true); G.touch = true; } else if (G && G.touch) { G.cancel(); G = null; pinch = null; }
+    try { stage.setPointerCapture(e.pointerId); } catch { } return;
+  }
+  if (G) return;
+  try { stage.setPointerCapture(e.pointerId); } catch { }
+  const pen = e.pointerType === 'pen';
+  const erase = pen ? (e.button === 5 || e.button === 2 || !!(e.buttons & 34)) : (S.drawMode && e.button === 2);
+  if (erase) G = gErase(e);
+  else if (pen || (S.drawMode && e.button === 0 && !S.space)) G = gDraw(e);
+  else if (e.button === 1 || (e.button === 0 && S.space)) G = gPan(e, false);
+  else if (e.button === 0) {
+    const h = e.target.dataset && e.target.dataset.h;
+    if (h) G = gResize(e, h);
+    else { const id = pick(e.clientX, e.clientY); G = id ? gMove(e, id) : (e.shiftKey ? gBox(e) : gPan(e, true)); }
+  }
+});
+addEventListener('pointermove', e => { S.mouse.x = e.clientX; S.mouse.y = e.clientY; }, true);
+stage.addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch') {
+    const t = touches.get(e.pointerId); if (!t) return; t.x = e.clientX; t.y = e.clientY;
+    if (touches.size >= 2) {
+      const [a, b] = [...touches.values()], cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      if (pinch) { const nz = clamp(S.view.z * d / pinch.d, ZMIN, ZMAX), wx = (pinch.cx - S.view.x) / S.view.z, wy = (pinch.cy - S.view.y) / S.view.z; setView(cx - wx * nz, cy - wy * nz, nz); }
+      pinch = { cx, cy, d }; return;
+    }
+  }
+  if (G && e.pointerId === G.pid) G.move(e);
+});
+const endPointer = e => {
+  if (e.pointerType === 'touch') { touches.delete(e.pointerId); pinch = null; }
+  if (G && e.pointerId === G.pid) { const g = G; G = null; e.type === 'pointerup' ? g.up(e) : g.cancel(); needFrame(); }
+};
+stage.addEventListener('pointerup', endPointer); stage.addEventListener('pointercancel', endPointer);
+stage.addEventListener('contextmenu', e => e.preventDefault());
+
+function gPan(e, clickClears) {
+  const x0 = S.view.x, y0 = S.view.y, sx = e.clientX, sy = e.clientY; let moved = false;
+  return {
+    pid: e.pointerId,
+    move(ev) { const dx = ev.clientX - sx, dy = ev.clientY - sy; if (!moved && Math.hypot(dx, dy) < 3) return; if (!moved) { moved = true; stage.classList.add('grabbing'); } setView(x0 + dx, y0 + dy, S.view.z); },
+    up() { stage.classList.remove('grabbing'); if (!moved && clickClears) setSel([]); },
+    cancel() { stage.classList.remove('grabbing'); },
+  };
+}
+function gBox(e) {
+  const a = toWorld(e.clientX, e.clientY), sx = e.clientX, sy = e.clientY, base = new Set(S.sel), box = $('#boxsel');
+  return {
+    pid: e.pointerId, busy: true,
+    move(ev) {
+      const b = toWorld(ev.clientX, ev.clientY), x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y), x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
+      box.style.display = 'block'; box.style.left = Math.min(sx, ev.clientX) + 'px'; box.style.top = Math.min(sy, ev.clientY) + 'px';
+      box.style.width = Math.abs(ev.clientX - sx) + 'px'; box.style.height = Math.abs(ev.clientY - sy) + 'px';
+      const ids = new Set(base);
+      for (const o of S.items) if (o.x < x1 && o.x + o.w > x0 && o.y < y1 && o.y + o.h > y0) ids.add(o.id);
+      for (const s of S.strokes) { const bb = geom(s).bb; if (bb[0] > x1 || bb[2] < x0 || bb[1] > y1 || bb[3] < y0) continue; const p = s.pts; for (let i = 0; i < p.length; i += 3) if (p[i] >= x0 && p[i] <= x1 && p[i + 1] >= y0 && p[i + 1] <= y1) { ids.add(s.id); break; } }
+      setSel(ids);
+    },
+    up() { box.style.display = 'none'; }, cancel() { box.style.display = 'none'; },
+  };
+}
+function gMove(e, id) {
+  const shift = e.shiftKey, wasSel = S.sel.has(id), sx = e.clientX, sy = e.clientY;
+  if (shift) { const n = new Set(S.sel); wasSel ? n.delete(id) : n.add(id); setSel(n); if (wasSel) return { pid: e.pointerId, move() { }, up() { }, cancel() { } }; }
+  else if (!wasSel) setSel([id]);
+  let moved = false, tx, origs, inkSet, itemIds;
+  const revert = () => { if (!moved) return; for (const [o, x, y] of origs) { o.x = x; o.y = y; renderItem(o); } S.drag = null; };
+  return {
+    pid: e.pointerId, get busy() { return moved; },
+    move(ev) {
+      const dx = (ev.clientX - sx) / S.view.z, dy = (ev.clientY - sy) / S.view.z;
+      if (!moved) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 3) return; moved = true;
+        const all = withAttached(S.sel); itemIds = new Set(); inkSet = new Set(); origs = [];
+        for (const i of all) { const o = S.byId.get(i); if (!o) continue; if (o.t === 'ink') inkSet.add(i); else { itemIds.add(i); origs.push([o, o.x, o.y]); } }
+        tx = beginTx([...all]); S.drag = { set: inkSet, dx: 0, dy: 0 };
+      }
+      for (const [o, x, y] of origs) { o.x = x + dx; o.y = y + dy; const st = els.get(o.id).style; st.left = o.x + 'px'; st.top = o.y + 'px'; }
+      S.drag.dx = dx; S.drag.dy = dy; needFrame();
+    },
+    up() {
+      if (!moved) { if (!shift && wasSel && S.sel.size > 1) setSel([id]); return; }
+      const { dx, dy } = S.drag; S.drag = null;
+      for (const [o] of origs) { o.x = r2(o.x); o.y = r2(o.y); }
+      for (const sid of inkSet) {
+        const s = S.byId.get(sid); for (let i = 0; i < s.pts.length; i += 3) { s.pts[i] = r2(s.pts[i] + dx); s.pts[i + 1] = r2(s.pts[i + 1] + dy); }
+        der.delete(s); if (!(s.parent && itemIds.has(s.parent))) attach(s);
+      }
+      tx.commit();
+    },
+    cancel: revert,
+  };
+}
+function gResize(e, h) {
+  const o = S.byId.get([...S.sel][0]); if (!o) return gPan(e, false);
+  const el = els.get(o.id), O = { x: o.x, y: o.y, w: o.w, h: o.h }, west = h.includes('w'), north = h.includes('n');
+  const kids = S.strokes.filter(s => s.parent === o.id).map(s => ({ s, pts: s.pts.slice(), w: s.w }));
+  const tx = beginTx([o.id, ...kids.map(k => k.s.id)]), ax = west ? O.x + O.w : O.x, ay = north ? O.y + O.h : O.y;
+  return {
+    pid: e.pointerId, busy: true,
+    move(ev) {
+      const p = toWorld(ev.clientX, ev.clientY); let w = west ? ax - p.x : p.x - ax, hh = north ? ay - p.y : p.y - ay;
+      if (o.t === 'img') { const s = Math.max(w / O.w, hh / O.h, 24 / Math.min(O.w, O.h)); w = O.w * s; hh = O.h * s; } else { w = Math.max(w, 90); hh = Math.max(hh, 44); }
+      o.w = w; o.h = hh; o.x = west ? ax - w : ax; o.y = north ? ay - hh : ay; renderItem(o);
+      if (o.t === 'note') { const real = el.offsetHeight; if (real > o.h + 0.5) { o.h = real; if (north) o.y = ay - real; renderItem(o); } }
+      const kx = o.w / O.w, ky = o.h / O.h, kw = Math.sqrt(kx * ky);
+      for (const k of kids) { const s = k.s; for (let i = 0; i < s.pts.length; i += 3) { s.pts[i] = o.x + (k.pts[i] - O.x) * kx; s.pts[i + 1] = o.y + (k.pts[i + 1] - O.y) * ky; } s.w = k.w * kw; der.delete(s); }
+      needFrame();
+    },
+    up() {
+      o.x = r2(o.x); o.y = r2(o.y); o.w = r2(o.w); o.h = r2(o.h); renderItem(o);
+      for (const k of kids) { const p = k.s.pts; for (let i = 0; i < p.length; i += 3) { p[i] = r2(p[i]); p[i + 1] = r2(p[i + 1]); } k.s.w = Math.round(k.s.w * 1000) / 1000; der.delete(k.s); }
+      tx.commit(); lodSoon();
+    },
+    cancel() { Object.assign(o, O); renderItem(o); for (const k of kids) { k.s.pts = k.pts; k.s.w = k.w; der.delete(k.s); } },
+  };
+}
+function gDraw(e) {
+  const pen = e.pointerType === 'pen', z = S.view.z;
+  const c = { pts: [], w: S.pen.size / z, c: S.pen.color, fx: 0, fy: 0, fp: 0.5, minD: 0.6 / z, lastP: 0.5 }; S.cur = c;
+  const add = ev => {
+    const w = toWorld(ev.clientX, ev.clientY), p = pen ? (ev.pressure > 0 ? ev.pressure : c.lastP) : 0.5; c.lastP = p; const n = c.pts.length;
+    if (!n) { c.fx = w.x; c.fy = w.y; c.fp = p; c.pts.push(w.x, w.y, p); return; }
+    c.fx += (w.x - c.fx) * 0.7; c.fy += (w.y - c.fy) * 0.7; c.fp += (p - c.fp) * 0.4;
+    const dx = c.fx - c.pts[n - 3], dy = c.fy - c.pts[n - 2]; if (dx * dx + dy * dy < c.minD * c.minD) return;
+    c.pts.push(c.fx, c.fy, c.fp);
+  };
+  add(e); needFrame();
+  return {
+    pid: e.pointerId, busy: true,
+    move(ev) { const list = ev.getCoalescedEvents ? ev.getCoalescedEvents() : []; if (list.length) list.forEach(add); else add(ev); needFrame(); },
+    up(ev) {
+      const w = toWorld(ev.clientX, ev.clientY), n = c.pts.length, dx = w.x - c.pts[n - 3], dy = w.y - c.pts[n - 2];
+      if (dx * dx + dy * dy > c.minD * c.minD) c.pts.push(w.x, w.y, c.fp * 0.75);
+      S.cur = null; const pts = simplify(c.pts, c.minD * 0.45, c.w);
+      for (let i = 0; i < pts.length; i += 3) { pts[i] = r2(pts[i]); pts[i + 1] = r2(pts[i + 1]); pts[i + 2] = Math.round(pts[i + 2] * 1000) / 1000; }
+      const s = { id: uid(), t: 'ink', c: c.c, w: Math.round(c.w * 1000) / 1000, pts }; attach(s);
+      const tx = beginTx().touch(s.id); addObj(s); tx.commit();
+    },
+    cancel() { S.cur = null; },
+  };
+}
+function gErase(e) {
+  const tx = beginTx(); let last = toWorld(e.clientX, e.clientY);
+  const hitAt = (x, y) => { const r = 9 / S.view.z; for (let i = S.strokes.length - 1; i >= 0; i--) { const s = S.strokes[i]; if (hitStroke(s, x, y, r)) { tx.touch(s.id); S.strokes.splice(i, 1); S.byId.delete(s.id); S.sel.delete(s.id); } } };
+  const sweep = ev => {
+    const w = toWorld(ev.clientX, ev.clientY), d = Math.hypot(w.x - last.x, w.y - last.y), n = Math.max(1, Math.ceil(d / (7 / S.view.z)));
+    for (let i = 1; i <= n; i++) hitAt(last.x + (w.x - last.x) * i / n, last.y + (w.y - last.y) * i / n);
+    last = w; S.eraser = { x: ev.clientX, y: ev.clientY }; needFrame();
+  };
+  hitAt(last.x, last.y); S.eraser = { x: e.clientX, y: e.clientY }; needFrame();
+  const done = () => { S.eraser = null; tx.commit(); };
+  return { pid: e.pointerId, busy: true, move: sweep, up: done, cancel: done };
+}
+stage.addEventListener('wheel', e => {
+  e.preventDefault(); cancelAnim();
+  let dy = e.deltaY; if (e.deltaMode === 1) dy *= 33; else if (e.deltaMode === 2) dy *= 400;
+  zoomAt(e.clientX, e.clientY, S.view.z * Math.exp(-clamp(dy, -400, 400) * (e.ctrlKey ? 0.01 : 0.0015)));
+}, { passive: false });
+stage.addEventListener('dblclick', e => {
+  if (S.lastType === 'pen' || S.drawMode || S.space) return;
+  const el = document.elementFromPoint(e.clientX, e.clientY), it = el && el.closest && el.closest('.item');
+  if (it) { const o = S.byId.get(it.dataset.id); if (o && o.t === 'note' && S.editing !== o.id) startEdit(o.id); return; }
+  const w = toWorld(e.clientX, e.clientY); newNote(w.x, w.y);
+});
+world.addEventListener('input', () => needFrame());
+
+/* ---------- keyboard ---------- */
+const isTyping = () => { const a = document.activeElement; return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable); };
+addEventListener('keydown', e => {
+  const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if (S.editing) { if (e.key === 'Escape' || (mod && e.key === 'Enter')) { e.preventDefault(); endEdit(); } return; }
+  if (mod && k === 'f') { e.preventDefault(); $('#q').focus(); $('#q').select(); return; }
+  if (mod && k === 's') { e.preventDefault(); flush().then(() => toast('Saved')); return; }
+  if (isTyping()) return;
+  if (e.key === 'Escape') { if ($('.gate.open#help')) $('#help').classList.remove('open'); else if (!closePanels()) { if (S.sel.size) setSel([]); else if (S.drawMode) setDraw(false); } return; }
+  if (e.code === 'Space') { e.preventDefault(); if (!S.space) { S.space = true; stage.classList.add('grab'); } return; }
+  if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if (mod && k === 'y') { e.preventDefault(); redo(); }
+  else if (mod && k === 'a') { e.preventDefault(); setSel([...S.items, ...S.strokes].map(o => o.id)); }
+  else if (mod && k === 'd') { e.preventDefault(); duplicateSel(); }
+  else if (mod) return;
+  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); }
+  else if (k === 'f' || e.key === 'Home' || k === '1') fitView();
+  else if (k === '0') animateView(innerWidth / 2 - cursorWorld().x, innerHeight / 2 - cursorWorld().y, 1);
+  else if (k === '+' || k === '=') zoomAt(innerWidth / 2, innerHeight / 2, S.view.z * 1.25);
+  else if (k === '-') zoomAt(innerWidth / 2, innerHeight / 2, S.view.z / 1.25);
+  else if (k === 'd') setDraw(!S.drawMode);
+  else if (k === ']') reorder(true); else if (k === '[') reorder(false);
+  else if (k === '?') $('#help').classList.add('open');
+  else if (e.key === 'Enter' && S.sel.size === 1) { const o = S.byId.get([...S.sel][0]); if (o && o.t === 'note') { e.preventDefault(); startEdit(o.id); } }
+  else if (e.key.startsWith('Arrow')) { e.preventDefault(); const d = (e.shiftKey ? 10 : 1) / S.view.z; nudge(k === 'arrowleft' ? -d : k === 'arrowright' ? d : 0, k === 'arrowup' ? -d : k === 'arrowdown' ? d : 0); }
+});
+addEventListener('keyup', e => { if (e.code === 'Space') { S.space = false; stage.classList.remove('grab'); } });
+addEventListener('blur', () => { S.space = false; stage.classList.remove('grab'); });
+addEventListener('resize', needFrame);
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button'); if (b) b.blur(); });
+
+/* ---------- paste and drop ---------- */
+addEventListener('paste', e => {
+  if (isTyping() || !S.doc) return; const cd = e.clipboardData; if (!cd) return;
+  const files = [...cd.items].filter(i => i.kind === 'file' && i.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean);
+  if (files.length) { e.preventDefault(); addImages(files, cursorWorld()); return; }
+  const text = cd.getData('text/plain'); if (text && text.trim()) { e.preventDefault(); const w = cursorWorld(); newNote(w.x, w.y, text.replace(/\r/g, '').trim()); }
+});
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => {
+  e.preventDefault(); if (!S.doc || !e.dataTransfer) return; const fs = [...e.dataTransfer.files];
+  const pics = fs.filter(f => f.type.startsWith('image/')), json = fs.find(f => /\.json$/i.test(f.name));
+  if (pics.length) addImages(pics, toWorld(e.clientX, e.clientY)); else if (json) importFile(json);
+});
+
+/* ---------- saving ---------- */
+let dirty = false, saving = null, saveT = 0;
+const serialize = () => ({ app: APP, v: 1, id: S.doc.id, name: S.doc.name, updated: Date.now(), items: S.items, strokes: S.strokes });
+function status(kind) {
+  const el = $('#status'); el.className = kind === 'error' ? 'err' : '';
+  const where = S.store && S.store.kind === 'folder' ? `in folder “${S.store.dir.name}”` : 'in this browser';
+  el.textContent = kind === 'error' ? 'Could not save. Click to try again.' : kind === 'saved' ? `Saved ${where}` : 'Saving…';
+}
+function markDirty() { if (!S.doc) return; dirty = true; status('edit'); clearTimeout(saveT); saveT = setTimeout(saveNow, 700); }
+function saveFailed() { dirty = true; status('error'); clearTimeout(saveT); saveT = setTimeout(saveNow, 5000); }
+function saveNow() {
+  clearTimeout(saveT); if (saving) return saving; if (!dirty || !S.doc) return Promise.resolve();
+  dirty = false; status('saving');
+  saving = (async () => {
+    try {
+      await Promise.all([...pendingImg]); const doc = serialize(); await S.store.save(doc);
+      const b = S.boards.find(x => x.id === doc.id); if (b) { b.name = doc.name; b.updated = doc.updated; }
+      if (!dirty) status('saved');
+    } catch (err) { console.error(err); saveFailed(); }
+    saving = null; if (dirty && !saveT) saveT = setTimeout(saveNow, 700);
+  })();
+  return saving;
+}
+async function flush() { for (let i = 0; i < 4 && (dirty || saving); i++) { if (saving) await saving; if (dirty) await saveNow(); } }
+$('#status').onclick = () => { if (dirty) saveNow(); };
+addEventListener('visibilitychange', () => { if (document.hidden) { if (S.editing) endEdit(); saveNow(); } });
+addEventListener('pagehide', () => saveNow());
+
+/* ---------- boards ---------- */
+const okItem = o => o && typeof o.id === 'string' && (o.t === 'note' || o.t === 'img') && [o.x, o.y, o.w, o.h].every(Number.isFinite);
+const okInk = s => s && typeof s.id === 'string' && s.t === 'ink' && Array.isArray(s.pts) && s.pts.length >= 3 && s.pts.length % 3 === 0;
+function uniqueName(base) { const have = new Set(S.boards.map(b => b.name.toLowerCase())); let n = base, i = 2; while (have.has(n.toLowerCase())) n = `${base} ${i++}`; return n; }
+async function refreshBoards() { S.boards = (await S.store.list()).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })); }
+function clearBoard() {
+  if (S.editing) endEdit(); cancelAnim();
+  for (const r of imgs.values()) { if (r.url) URL.revokeObjectURL(r.url); if (r.thumb) URL.revokeObjectURL(r.thumb); }
+  imgs.clear(); tq.length = 0; els.clear(); world.textContent = '';
+  S.items = []; S.strokes = []; S.byId = new Map(); S.sel = new Set(); S.undo = []; S.redo = []; S.cur = null; S.drag = null; undoUI();
+}
+async function openBoard(id) {
+  await flush(); const b = S.boards.find(x => x.id === id); if (!b) return;
+  let doc; try { doc = await S.store.load(id); } catch (err) { console.error(err); toast('That board could not be opened'); return; }
+  clearBoard(); S.doc = { id, name: b.name };
+  S.items = ((doc && doc.items) || []).filter(okItem); S.strokes = ((doc && doc.strokes) || []).filter(okInk);
+  for (const o of [...S.items, ...S.strokes]) S.byId.set(o.id, o);
+  for (const o of S.items) if (o.t === 'note') { o.text = String(o.text || ''); if (!NOTE_COLORS[o.color]) o.color = 'yellow'; }
+  syncDOM(); const v = await meta.get('view:' + id);
+  if (v && Number.isFinite(v.x) && Number.isFinite(v.z)) setView(v.x, v.y, clamp(v.z, ZMIN, ZMAX)); else fitView(false);
+  meta.set('last', id); $('#bname').textContent = b.name; document.title = b.name + ' · Canvas Notes'; status('saved'); renderBoards();
+  cleanImages(id).catch(() => { });
+}
+async function cleanImages(bid) {      // remove screenshot files no item points at any more
+  const used = new Set(S.items.filter(o => o.t === 'img').map(o => o.img)), now = Date.now();
+  for (const f of await S.store.listImages(bid)) { if (!S.doc || S.doc.id !== bid) return; if (!used.has(f.name) && !imgs.has(f.name) && now - f.modified > 864e5) await S.store.delImage(bid, f.name); }
+}
+async function createBoard(name) {
+  await flush(); const doc = { app: APP, v: 1, id: uid(8), name: uniqueName(safeName(name)), updated: Date.now(), items: [], strokes: [] };
+  await S.store.save(doc); await refreshBoards(); await openBoard(doc.id);
+}
+async function renameBoard(id, name) {
+  name = safeName(name); const b = S.boards.find(x => x.id === id); if (!b || b.name === name) return;
+  const taken = S.boards.some(x => x.id !== id && x.name.toLowerCase() === name.toLowerCase()); if (taken) name = uniqueName(name);
+  if (S.doc && S.doc.id === id) { S.doc.name = name; dirty = true; await flush(); $('#bname').textContent = name; document.title = name + ' · Canvas Notes'; }
+  else { const d = await S.store.load(id); d.name = name; await S.store.save(d); }
+  await refreshBoards(); renderBoards();
+}
+async function deleteBoard(id) {
+  const cur = S.doc && S.doc.id === id; if (cur) { clearTimeout(saveT); dirty = false; if (saving) await saving; }
+  await S.store.remove(id); meta.set('view:' + id, undefined); await refreshBoards();
+  if (cur) { S.doc = null; if (S.boards.length) await openBoard(S.boards[0].id); else await createBoard('My board'); } else renderBoards();
+}
+const ICON = { edit: '<svg viewBox="0 0 20 20"><path d="M4 16l1-4 8-8 3 3-8 8-4 1z"/></svg>', bin: '<svg viewBox="0 0 20 20"><path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10"/></svg>' };
+function renderBoards() {
+  const list = $('#boardlist'); list.textContent = '';
+  for (const b of S.boards) {
+    const row = document.createElement('div'); row.className = 'row' + (S.doc && b.id === S.doc.id ? ' cur' : '');
+    const name = document.createElement('button'); name.className = 'btn name'; name.textContent = b.name;
+    name.onclick = () => { closePanels(); if (!S.doc || b.id !== S.doc.id) openBoard(b.id); };
+    const ren = document.createElement('button'); ren.className = 'btn mini'; ren.title = 'Rename'; ren.innerHTML = ICON.edit;
+    ren.onclick = () => {
+      row.textContent = ''; const inp = document.createElement('input'); inp.value = b.name; row.append(inp); inp.focus(); inp.select(); let done = false;
+      const fin = ok => { if (done) return; done = true; ok && inp.value.trim() ? renameBoard(b.id, inp.value) : renderBoards(); };
+      inp.onkeydown = ev => { if (ev.key === 'Enter') fin(true); else if (ev.key === 'Escape') fin(false); ev.stopPropagation(); }; inp.onblur = () => fin(true);
+    };
+    const del = document.createElement('button'); del.className = 'btn mini'; del.title = 'Delete'; del.innerHTML = ICON.bin;
+    del.onclick = () => {
+      row.textContent = ''; const ask = document.createElement('span'); ask.className = 'ask'; ask.textContent = `Delete “${b.name}”?`;
+      const yes = document.createElement('button'); yes.className = 'btn danger'; yes.textContent = 'Delete'; yes.onclick = () => deleteBoard(b.id);
+      const no = document.createElement('button'); no.className = 'btn'; no.textContent = 'Keep'; no.onclick = renderBoards; row.append(ask, yes, no);
+    };
+    row.append(name, ren, del); list.append(row);
+  }
+  const folder = S.store && S.store.kind === 'folder';
+  $('#where').textContent = folder ? `Boards are saved as files in the folder “${S.store.dir.name}”.` : hasFS ? 'Boards are saved inside this browser. Pick a folder to keep them as real files you can back up.' : 'Boards are saved inside this browser. Saving to a folder needs Edge or Chrome on a computer.';
+  $('#bfolder').textContent = folder ? 'Use a different folder…' : 'Save boards to a folder…'; $('#bfolder').hidden = !hasFS; $('#bnofolder').hidden = !folder;
+}
+function closePanels() { let any = false; for (const p of document.querySelectorAll('.panel.open')) { p.classList.remove('open'); any = true; } return any; }
+$('#bbtn').onclick = () => { const p = $('#boards'), open = p.classList.contains('open'); closePanels(); if (!open) { renderBoards(); p.classList.add('open'); } };
+$('#bnew').onclick = async () => { closePanels(); await createBoard('Untitled'); $('#bbtn').click(); const cur = $('#boardlist .row.cur .mini'); if (cur) cur.click(); };
+$('#bhelp').onclick = () => { closePanels(); $('#help').classList.add('open'); };
+$('#helpclose').onclick = () => $('#help').classList.remove('open');
+
+/* ---------- folder ---------- */
+async function useFolder(dir) {
+  await flush(); const target = folderStore(dir), existing = await target.list(), have = new Set(existing.map(b => b.id)), curId = S.doc && S.doc.id;
+  if (S.store.kind === 'browser') {
+    for (const b of await browserStore.list()) {
+      if (have.has(b.id)) continue; const doc = await browserStore.load(b.id); if (!doc) continue;
+      const blank = !((doc.items || []).length || (doc.strokes || []).length); if (blank && existing.length) { await browserStore.remove(b.id); continue; }
+      await target.save(doc);
+      for (const im of await browserStore.listImages(b.id)) { const blob = await browserStore.getImage(b.id, im.name); if (blob) await target.putImage(b.id, im.name, blob); }
+      await browserStore.remove(b.id);
+    }
+  }
+  await meta.set('folder', dir); S.store = target; S.doc = null; clearBoard(); await refreshBoards();
+  if (!S.boards.length) await createBoard('My board'); else await openBoard((S.boards.find(b => b.id === curId) || S.boards[0]).id);
+}
+$('#bfolder').onclick = async () => {
+  closePanels(); let dir; try { dir = await showDirectoryPicker({ mode: 'readwrite', id: 'canvasnotes' }); } catch { return; }
+  try { await useFolder(dir); toast(`Boards now save to “${dir.name}”`); } catch (err) { console.error(err); toast('That folder could not be used'); }
+};
+$('#bnofolder').onclick = async () => {
+  closePanels(); await flush(); await meta.set('folder', undefined); S.store = browserStore; S.doc = null; clearBoard(); await start();
+  toast('Using browser storage. Your files stay in the folder.');
+};
+
+/* ---------- export / import ---------- */
+const dataURL = blob => new Promise((res, rej) => { const f = new FileReader(); f.onload = () => res(f.result); f.onerror = () => rej(f.error); f.readAsDataURL(blob); });
+$('#bexport').onclick = async () => {
+  closePanels(); await flush(); const d = serialize();
+  const parts = ['{"app":"canvas-notes","v":1,"name":', JSON.stringify(d.name), ',"items":', JSON.stringify(d.items), ',"strokes":', JSON.stringify(d.strokes), ',"images":{']; let first = true;
+  for (const name of new Set(d.items.filter(o => o.t === 'img').map(o => o.img))) {
+    const r = imgRec(name), blob = r.blob || await S.store.getImage(d.id, name).catch(() => null); if (!blob) continue;
+    parts.push((first ? '' : ',') + JSON.stringify(name) + ':' + JSON.stringify(await dataURL(blob))); first = false;
+  }
+  parts.push('}}'); const file = new Blob(parts, { type: 'application/json' }), fname = safeName(d.name) + '.canvas.json';
+  if (window.showSaveFilePicker) {
+    try { const h = await showSaveFilePicker({ suggestedName: fname, types: [{ description: 'Canvas Notes board', accept: { 'application/json': ['.json'] } }] }); const w = await h.createWritable(); await w.write(file); await w.close(); toast('Board exported'); return; }
+    catch (err) { if (err && err.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = fname; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10000); toast('Board exported');
+};
+$('#bimport').onclick = () => { closePanels(); $('#pickfile').value = ''; $('#pickfile').click(); };
+$('#pickfile').onchange = e => { const f = e.target.files[0]; if (f) importFile(f); };
+async function importFile(file) {
+  let d; try { d = JSON.parse(await file.text()); } catch { d = null; }
+  if (!d || d.app !== APP || !Array.isArray(d.items)) { toast('That file is not a Canvas Notes board'); return; }
+  await flush(); const id = uid(8), name = uniqueName(safeName(d.name || file.name.replace(/\..*$/, ''))), pics = d.images || {}, done = new Set();
+  const items = d.items.filter(okItem), strokes = (d.strokes || []).filter(okInk);
+  try {
+    for (const o of items) if (o.t === 'img' && pics[o.img] && !done.has(o.img)) { done.add(o.img); await S.store.putImage(id, o.img, await (await fetch(pics[o.img])).blob()); }
+    await S.store.save({ app: APP, v: 1, id, name, updated: Date.now(), items, strokes });
+  } catch (err) { console.error(err); toast('The board could not be imported'); return; }
+  await refreshBoards(); await openBoard(id); toast(`Imported “${name}”`);
+}
+
+/* ---------- search ---------- */
+let hits = [], hitI = -1;
+function jumpTo(id) {
+  const o = S.byId.get(id); if (!o) return; const z = clamp(S.view.z, 0.7, 1.5);
+  animateView(innerWidth / 2 - (o.x + o.w / 2) * z, innerHeight / 2 - (o.y + o.h / 2) * z, z); setSel([id]);
+  const el = els.get(id); if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+}
+function runSearch() {
+  const q = $('#q').value.trim().toLowerCase(), box = $('#results'); box.textContent = ''; hits = []; hitI = -1;
+  if (!q) { box.classList.remove('open'); $('#qn').textContent = ''; return; }
+  for (const o of S.items) if (o.t === 'note' && o.text.toLowerCase().includes(q)) hits.push(o);
+  $('#qn').textContent = hits.length ? String(hits.length) : 'none';
+  hits.slice(0, 60).forEach((o, i) => {
+    const b = document.createElement('button'); b.className = 'res'; const flat = o.text.replace(/\s+/g, ' '), at = flat.toLowerCase().indexOf(q), from = Math.max(0, at - 24);
+    b.innerHTML = (from ? '…' : '') + esc(flat.slice(from, at)) + '<mark>' + esc(flat.slice(at, at + q.length)) + '</mark>' + esc(flat.slice(at + q.length, at + q.length + 60));
+    b.onclick = () => { hitI = i; markHit(); jumpTo(o.id); }; box.append(b);
+  });
+  box.classList.toggle('open', hits.length > 0);
+}
+function markHit() { [...$('#results').children].forEach((c, i) => c.classList.toggle('on', i === hitI)); }
+$('#q').addEventListener('input', runSearch);
+$('#q').addEventListener('focus', () => { if ($('#q').value.trim()) runSearch(); });
+$('#q').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); if (hits.length) { hitI = (hitI + 1) % hits.length; markHit(); jumpTo(hits[hitI].id); } }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); if (hits.length) { hitI = (hitI - 1 + hits.length) % hits.length; markHit(); jumpTo(hits[hitI].id); } }
+  else if (e.key === 'Escape') { e.stopPropagation(); $('#q').value = ''; runSearch(); $('#q').blur(); }
+});
+
+/* ---------- toolbar wiring ---------- */
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
+for (const c of PEN_COLORS) { const b = document.createElement('button'); b.className = 'sw'; b.style.background = c; b.dataset.c = c; b.title = 'Pen colour'; b.onclick = () => setPen(c); $('#pencolors').append(b); }
+PEN_SIZES.forEach((s, i) => { const b = document.createElement('button'); b.className = 'btn sz'; b.dataset.s = s; b.title = ['Fine', 'Medium', 'Thick'][i] + ' pen'; const d = [4, 8, 13][i]; b.innerHTML = `<i style="width:${d}px;height:${d}px"></i>`; b.onclick = () => setPen(null, s); $('#pensizes').append(b); });
+for (const [k, v] of Object.entries(NOTE_COLORS)) { const b = document.createElement('button'); b.className = 'sw'; b.style.background = v; b.dataset.c = k; b.title = 'Note colour'; b.onclick = () => recolorNotes(k); $('#notebar').append(b); }
+$('#tdraw').onclick = () => setDraw(!S.drawMode);
+$('#tundo').onclick = undo; $('#tredo').onclick = redo;
+$('#zin').onclick = () => zoomAt(innerWidth / 2, innerHeight / 2, S.view.z * 1.25);
+$('#zout').onclick = () => zoomAt(innerWidth / 2, innerHeight / 2, S.view.z / 1.25);
+$('#zpct').onclick = () => { const c = toWorld(innerWidth / 2, innerHeight / 2); animateView(innerWidth / 2 - c.x, innerHeight / 2 - c.y, 1); };
+$('#zfit').onclick = () => fitView();
+
+/* ---------- start ---------- */
+async function start() {
+  try { await refreshBoards(); }
+  catch (err) { console.error(err); if (S.store.kind === 'folder') { S.store = browserStore; toast('The folder could not be opened. Using browser storage.'); await refreshBoards(); } else throw err; }
+  if (!S.boards.length) { await createBoard('My board'); return; }
+  const last = await meta.get('last'); await openBoard((S.boards.find(b => b.id === last) || S.boards[0]).id);
+}
+function lockWindow() {
+  if (!navigator.locks) return Promise.resolve(true);
+  return new Promise(res => { navigator.locks.request('canvas-notes-window', { ifAvailable: true }, lock => { if (!lock) { res(false); return; } res(true); return new Promise(() => { }); }); });
+}
+(async function boot() {
+  if (!(await lockWindow())) { $('#gate-lock').classList.add('open'); return; }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch { }
+  const pen = await meta.get('pen'); if (pen && PEN_COLORS.includes(pen.color) && PEN_SIZES.includes(pen.size)) S.pen = pen;
+  const nc = await meta.get('noteColor'); if (NOTE_COLORS[nc]) S.noteColor = nc;
+  setPen(); undoUI();
+  S.store = browserStore; const dir = await meta.get('folder');
+  if (dir && dir.kind === 'directory') {
+    let perm = 'granted'; try { if (dir.queryPermission) perm = await dir.queryPermission({ mode: 'readwrite' }); } catch { perm = 'prompt'; }
+    if (perm === 'granted') S.store = folderStore(dir);
+    else {
+      $('#gfname').textContent = dir.name; $('#gate-folder').classList.add('open');
+      const choice = await new Promise(res => {
+        $('#gopen').onclick = async () => { try { if (await dir.requestPermission({ mode: 'readwrite' }) === 'granted') res('folder'); } catch { } };
+        $('#gbrowser').onclick = () => res('browser');
+      });
+      $('#gate-folder').classList.remove('open'); if (choice === 'folder') S.store = folderStore(dir);
+    }
+  }
+  await start();
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) navigator.serviceWorker.register('sw.js').catch(() => { });
+})().catch(err => { console.error(err); toast('Something went wrong while starting. Reload to try again.'); });
+
+window.canvasNotes = { S, useFolder, openBoard, createBoard, flush, fitView, importFile, geom };
+</script>
+</body>
+</html>
